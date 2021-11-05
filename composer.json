@@ -1,0 +1,20 @@
+{
+    "name": "wpfunnels/appsumo-licensing",
+    "type": "wp-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "wpfunnels",
+            "email": "admin@getwpfunnels.com"
+        }
+    ],
+    "autoload": {
+        "classmap": [
+            "admin/",
+            "includes"
+        ]
+    },
+    "require": {
+        "curl/curl": "^2.3"
+    }
+}
