@@ -58,9 +58,9 @@ class AppSumoApi {
 	protected $request;
 
 	public function __construct() {
-		$this->license      = new License();
+//		$this->license      = new License();
 		$this->api_response = new ApiResponse();
-		$this->prefix       = Globals::get_meta_prefix();
+		$this->prefix       = 'wpf';
 	}
 
 	/**

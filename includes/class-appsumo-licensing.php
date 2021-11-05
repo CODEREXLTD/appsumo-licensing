@@ -13,6 +13,8 @@
  * @subpackage Appsumo_Licensing/includes
  */
 
+use WPF\AppSupomo\AppSumoApi;
+
 /**
  * The core plugin class.
  *
@@ -56,6 +58,14 @@ class Appsumo_Licensing {
 	 * @var      string    $version    The current version of the plugin.
 	 */
 	protected $version;
+
+
+    /**
+     *
+     * @var     AppSumoApi $license_api
+     * @access  protected
+     */
+	protected $license_api;
 
 	/**
 	 * Define the core functionality of the plugin.
@@ -145,7 +155,7 @@ class Appsumo_Licensing {
 
 
 	private function define_endpoints() {
-
+        $this->license_api = new AppSumoApi();
     }
 
 

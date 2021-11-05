@@ -11,7 +11,8 @@
     "autoload": {
         "classmap": [
             "admin/",
-            "includes"
+            "includes/",
+            "includes/classes"
         ]
     },
     "require": {
