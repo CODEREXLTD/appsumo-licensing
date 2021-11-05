@@ -1,0 +1,2 @@
+# appsumo-licensing
+Appsumo Licensing
