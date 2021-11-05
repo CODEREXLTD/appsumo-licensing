@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // if class already defined, bail out
-if ( class_exists( 'Ulicense\AppSumoApi' ) ) {
+if ( class_exists( 'WPF\AppSupomo\AppSumoApi' ) ) {
 	return;
 }
 
@@ -68,7 +68,7 @@ class AppSumoApi {
 	 */
 	public function register_rest_route_appsumo_notification() {
 
-		register_rest_route( 'appsumo/v1/', 'notification', array(
+		register_rest_route( 'wpf/appsumo/v1/', 'notification', array(
 			'methods'  => 'POST',
 			'callback' => [ $this, 'rest_callback_appsumo_notification' ],
 		) );
@@ -85,6 +85,7 @@ class AppSumoApi {
 			'access' => $jwt_res['token']
 		);
 	}
+
 
 	/**
 	 *
@@ -116,11 +117,9 @@ class AppSumoApi {
 
 		endswitch;
 
-		return apply_filters( 'ulicense_appsumo_api_response', $response );
-
-		exit;
-
+		return apply_filters( 'wpf_appsumo_api_response', $response );
 	}
+
 
 	/**
 	 * validate JWT token
@@ -146,27 +145,25 @@ class AppSumoApi {
 
 	}
 
+
 	/**
 	 * activate action
      *
 	 */
 	public function api_action_activate( \WP_REST_Request $request ) {
 
-
 		// make sure a license is created and
 		$order_created = $this->create_order_and_license( $request );
 
 		if ( is_wp_error( $order_created ) ) {
-
 			return $order_created;
 		}
 
-
-		$redirect_url = Globals::get_options( 'appsumo_redirect_url' );
+		$redirect_url = Globals::get_appsumo_redirect_link();
 		$redirect_url = esc_url_raw( $redirect_url ) . '?email=' . $request->get_param( 'activation_email' );
 
 		$data               = new \stdClass();
-		$data->message      = esc_html__( 'User Account and License created', 'ulicense' );
+		$data->message      = esc_html__( 'User Account and License created', 'appsumo-licensing' );
 		$data->redirect_url = $redirect_url;
 
 		$response = new \WP_REST_Response();
@@ -177,6 +174,7 @@ class AppSumoApi {
 
 	}
 
+
 	/**
 	 * create order and subscription
 	 */
@@ -185,49 +183,50 @@ class AppSumoApi {
 		$this->request = $request;
 		$email         = $request->get_param( 'activation_email' );
 
+
 		if ( empty( $email ) ) {
-			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'ulicense' ) );
+			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'appsumo-licensing' ) );
 		}
 
 		if ( empty( $request->get_param( 'uuid' ) ) ) {
-			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'ulicense' ) );
+			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'appsumo-licensing' ) );
 		}
 
+        $user_name   = strstr($email, '@', true);
+
 		$address = array(
-			'first_name' => 'Sumo-ling',
+			'first_name' => ucfirst($user_name),
 			'email'      => $email,
 		);
 
 		$user_exists = get_user_by_email( $email );
 
 		if ( $user_exists ) {
-			return $this->get_error( 'user_exists', esc_html__( 'User already exists.', 'ulicense' ) );
+			return $this->get_error( 'user_exists', esc_html__( 'User already exists.', 'appsumo-licensing' ) );
 
 		}
-
-		$appsumo_woo_product = (int) Globals::get_options( 'appsumo_product_id' );
+        $plan_id                = sanitize_key( $request->get_param( 'plan_id' ) );
+		$appsumo_woo_product    = (int) Globals::get_variation_id($plan_id);
 
 		if ( ! $appsumo_woo_product ) {
-			return $this->get_error( 'product_not_defined', esc_html__( 'Product not defiend for Licensing.', 'ulicense' ) );
+			return $this->get_error( 'product_not_defined', esc_html__( 'Product not defined for Licensing.', 'appsumo-licensing' ) );
 
 		}
-
 		$customer_id = wc_create_new_customer( $email );
 
 		if ( ! $customer_id ) {
-			return $this->get_error( 'user_not_created', esc_html__( 'user could not be created.', 'ulicense' ) );
+			return $this->get_error( 'user_not_created', esc_html__( 'user could not be created.', 'appsumo-licensing' ) );
 
 		}
-
 
 		wp_set_current_user( $customer_id );
 
 		$order_args = array(
 			'status'        => 'completed',
 			'customer_id'   => $customer_id,
-			'customer_note' => esc_html__( 'AppSumo Special Deal', 'ulicense' ),
+			'customer_note' => esc_html__( 'AppSumo Special Deal', 'appsumo-licensing' ),
 			'parent'        => null,
-			'created_via'   => esc_html__( 'Created via AppSumo', 'ulicense' ),
+			'created_via'   => esc_html__( 'Created via AppSumo', 'appsumo-licensing' ),
 			'cart_hash'     => null,
 		);
 
@@ -236,28 +235,184 @@ class AppSumoApi {
 		$order = wc_create_order( $order_args );
 
 		if ( is_wp_error( $order ) ) {
-			return $this->get_error( 'order_not_created', esc_html__( 'Order could not be created.', 'ulicense' ) );
+			return $this->get_error( 'order_not_created', esc_html__( 'Order could not be created.', 'appsumo-licensing' ) );
 		}
 
-
 		// The add_product() function below is located in /plugins/woocommerce/includes/abstracts/abstract_wc_order.php
-		$order->add_product( wc_get_product( $appsumo_woo_product ), 1 ); // This is an existing SIMPLE product
+		$order->add_product( wc_get_product( $appsumo_woo_product ), 1 );
 		$order->set_address( $address, 'billing' );
 
 		$order->calculate_totals();
 
-		$result = $order->update_status( "completed", esc_html__( 'AppSumo order', 'ulicense' ), true );
-
-		add_filter( 'ulicense_new_license_generate_meta', [ $this, 'filter_license_meta_with_request' ] );
+		$result = $order->update_status( "completed", esc_html__( 'AppSumo order', 'appsumo-licensing' ), true );
 
 		do_action( 'woocommerce_payment_complete', $order->get_id() );
 
-		$this->grant_download_permissions( $order );
+		// now assign the license
+        if( is_plugin_active( 'woocommerce-software-license/software-license.php' ) ){
+            $license_obj = new \WOO_SL_functions;
+            apply_filters('woo_sl/order_processed/product_sl', array( $this, 'filter_license_data' ), 10, 3);
+            $this->create_license($order->get_id(), $license_obj);
+            add_filter( 'woo_sl/generate_license_key', array( $this, 'filter_licence_key' ), 10, 4);
+            $license_obj->generate_license_keys($order->get_id());
+        }
 
+		$this->grant_download_permissions( $order );
 		return $result;
 	}
 
-	/**
+
+    /**
+     * create license
+     *
+     * @param $order_id
+     * @param $license_obj
+     * @throws \Exception
+     */
+    public function create_license( $order_id, $license_obj )
+    {
+        //check if order contain any licensed product
+        $order_data     = new \WC_Order($order_id);
+        $order_products =   $order_data->get_items();
+        $found_licensed_product =   false;
+        foreach($order_products as  $key    =>  $order_product)
+        {
+            if (\WOO_SL_functions::is_product_licensed( $order_product->get_product_id() ) )
+            {
+                $found_licensed_product =   TRUE;
+                break;
+            }
+        }
+        if(!$found_licensed_product)
+            return;
+        $_woo_sl    =   array();
+        //get the order items
+        foreach ( $order_products as $key   =>  $order_product )
+        {
+            if(! $license_obj->is_product_licensed( $order_product->get_product_id() ))
+                continue;
+
+            $is_licence_extend  =   FALSE;
+            $_woo_sl_extend     =   wc_get_order_item_meta($key, '_woo_sl_extend', TRUE);
+
+            if(!empty($_woo_sl_extend))
+                $is_licence_extend  =   TRUE;
+
+            //no need to process if is an licence extend
+            if (    $is_licence_extend  )
+                continue;
+
+            //check against the variation, if assigned a licence group
+            if($order_product->get_variation_id()   > 0)
+            {
+                $variation_license_group_id =   get_post_meta($order_product->get_variation_id(), '_sl_license_group_id', TRUE);
+
+                if( $variation_license_group_id == '')
+                    continue;
+            }
+
+            //get product licensing details
+            $product_sl_groups     =   \WOO_SL_functions::get_product_licensing_groups( $order_product->get_product_id() );
+
+            //if variation, filter out the licence groups
+            if($order_product->get_variation_id()   >   0)
+            {
+                if(isset($product_sl_groups[$variation_license_group_id]))
+                {
+                    $_product_sl_groups  =   $product_sl_groups;
+                    $product_sl_groups  =   array();
+                    $product_sl_groups[$variation_license_group_id]  =   $_product_sl_groups[$variation_license_group_id];
+                }
+                else
+                    $product_sl_groups  =   array();
+            }
+
+            $_group_title                       =   array();
+            $_licence_prefix                    =   array();
+            $_max_keys                          =   array();
+            $_max_instances_per_key             =   array();
+            $_use_predefined_keys               =   array();
+            $_product_use_expire                =   array();
+            $_product_expire_renew_price        =   array();
+            $_product_expire_units              =   array();
+            $_product_expire_time               =   array();
+            $_product_expire_starts_on_activate =   array();
+            $_product_expire_disable_update_link=   array();
+            $_product_expire_limit_api_usage    =   array();
+            $_product_expire_notice             =   array();
+
+            foreach($product_sl_groups  as  $product_sl_group)
+            {
+                $_group_title[]                     =   $product_sl_group['group_title'];
+                $_licence_prefix[]                  =   $product_sl_group['licence_prefix'];
+                $_max_keys[]                        =   $product_sl_group['max_keys'];
+                $_max_instances_per_key[]           =   $product_sl_group['max_instances_per_key'];
+                $_use_predefined_keys[]             =   $product_sl_group['use_predefined_keys'];
+
+                $_product_use_expire[]                =   $product_sl_group['product_use_expire'];
+                $_product_expire_renew_price[]        =   $product_sl_group['product_expire_renew_price'];
+                $_product_expire_units[]              =   $product_sl_group['product_expire_units'];
+                $_product_expire_time[]               =   $product_sl_group['product_expire_time'];
+                $_product_expire_starts_on_activate[] =   $product_sl_group['product_expire_starts_on_activate'];
+                $_product_expire_disable_update_link[]=   $product_sl_group['product_expire_disable_update_link'];
+                $_product_expire_limit_api_usage[]    =   $product_sl_group['product_expire_limit_api_usage'];
+                $_product_expire_notice[]             =   $product_sl_group['product_expire_notice'];
+            }
+
+            $data['group_title']                            =   $_group_title;
+            $data['licence_prefix']                         =   $_licence_prefix;
+            $data['max_keys']                               =   $_max_keys;
+            $data['max_instances_per_key']                  =   $_max_instances_per_key;
+            $data['use_predefined_keys']                    =   $_use_predefined_keys;
+            $data['product_use_expire']                     =   $_product_use_expire;
+            $data['product_expire_renew_price']             =   $_product_expire_renew_price;
+            $data['product_expire_units']                   =   $_product_expire_units;
+            $data['product_expire_time']                    =   $_product_expire_time;
+            $data['product_expire_starts_on_activate']      =   $_product_expire_starts_on_activate;
+            $data['product_expire_disable_update_link']     =   $_product_expire_disable_update_link;
+            $data['product_expire_limit_api_usage']         =   $_product_expire_limit_api_usage;
+            $data['product_expire_notice']                  =   $_product_expire_notice;
+
+            $data   =   apply_filters('woo_sl/order_processed/product_sl', $data, $order_product, $order_id);
+
+            wc_update_order_item_meta($key, '_woo_sl', $data);
+
+            //set currently as inactive
+            wc_update_order_item_meta($key, '_woo_sl_licensing_status', 'inactive');
+
+            foreach ( $data['product_use_expire']    as  $data_key    =>  $data_block_value )
+            {
+                if ( $data_block_value    !=  'no' )
+                {
+                    wc_update_order_item_meta($key, '_woo_sl_licensing_using_expire', $data_block_value );
+
+                    //continue only if expire_starts_on_activate is not set to yes
+                    $expire_starts_on_activate  =   $data['product_expire_starts_on_activate'][$data_key];
+                    if ( $expire_starts_on_activate ==  'yes' )
+                    {
+                        //set currently as not-activated
+                        wc_update_order_item_meta($key, '_woo_sl_licensing_status', 'not-activated');
+                        continue;
+                    }
+
+                    if ( $data_block_value    ==  'yes' )
+                    {
+                        $today      =   date("Y-m-d", current_time( 'timestamp' ));
+                        $start_at   =   strtotime($today);
+                        wc_update_order_item_meta($key, '_woo_sl_licensing_start', $start_at);
+
+                        $_sl_product_expire_units   =   $data['product_expire_units'][$data_key];
+                        $_sl_product_expire_time    =   $data['product_expire_time'][$data_key];
+                        $expire_at  =   strtotime( " + " . $_sl_product_expire_units . " " . $_sl_product_expire_time,  $start_at);
+                        wc_update_order_item_meta($key, '_woo_sl_licensing_expire_at', $expire_at);
+                    }
+                }
+            }
+        }
+    }
+
+
+    /**
 	 *
 	 */
 	public function get_error( $code, $message, $status_code = 403 ) {
@@ -295,7 +450,6 @@ class AppSumoApi {
 		}
 
 		$order->get_data_store()->set_download_permissions_granted( $order, true );
-
 	}
 
 
@@ -307,7 +461,6 @@ class AppSumoApi {
      */
 	public function api_action_update_plan( \WP_REST_Request $request ) {
 
-
 		// make sure a license is created and
 		$upgrade_plan = $this->update_license_for_plan( $request );
 
@@ -315,9 +468,8 @@ class AppSumoApi {
 			return $upgrade_plan;
 		}
 
-
 		$data          = new \stdClass();
-		$data->message = esc_html__( 'uSchema License Updated.', 'ulicense' );
+		$data->message = esc_html__( 'WPFunnels License Updated.', 'appsumo-licensing' );
 
 		$response = new \WP_REST_Response();
 		$response->set_status( 200 );
@@ -342,33 +494,190 @@ class AppSumoApi {
 		$user = get_user_by_email( $email );
 
 		if ( ! $user ) {
-			return $this->get_error( 'user_not_found', esc_html__( 'User Not Found.', 'ulicense' ) );
+			return $this->get_error( 'user_not_found', esc_html__( 'User Not Found.', 'appsumo-licensing' ) );
 		}
 
 		$plan_id     = sanitize_key( $request->get_param( 'plan_id' ) );
 		$max_allowed = $this->get_max_allowed_for_plan( $plan_id );
 
 		if ( 1 === $max_allowed ) {
-			return $this->get_error( 'invalid_plan_id', esc_html__( 'Plan Id provided is not valid.', 'ulicense' ) );
+			return $this->get_error( 'invalid_plan_id', esc_html__( 'Plan Id provided is not valid.', 'appsumo-licensing' ) );
 		}
 
-		$license_post_id = $this->license->get_post_id_from_key( $request->get_param( 'uuid' ) );
+		$order_id               = $this->get_order_id_from_key( $request->get_param( 'uuid' ) );
+        if ( ! $order_id ) {
+            return $this->get_error( 'invalid_uuid', esc_html__( 'Invalid UUID provide, no license found.', 'appsumo-licensing' ) );
+        }
+		$order                  = wc_get_order($order_id);
+		$items                  = $order->get_items('line_item');
+        $appsumo_woo_product    = (int) Globals::get_variation_id($plan_id);
+        foreach ($items as $item_key => $item) {
+            $order->remove_item($item_key);
+        }
 
-		if ( ! $license_post_id ) {
-			return $this->get_error( 'invalid_uuid', esc_html__( 'Invalid UUID provide, no license found.', 'ulicense' ) );
-		}
+        $order->add_product( wc_get_product( $appsumo_woo_product ), 1 );
+        $order->save();
+        $this->update_license( $order_id, $appsumo_woo_product );
+        return true;
+//		$product_id = $this->get_product_id_from_key( $request->get_param( 'uuid' ) );
 
-		$existing_allowed = $this->license->get_max_allowed( $license_post_id );
 
-		if ( $existing_allowed === $max_allowed ) {
-			return $this->get_error( 'plan_id_same_as_existing', esc_html__( 'plan_id provided is the same as existing.', 'ulicense' ) );
-		}
-		$this->license->set_post_id( $license_post_id );
-		$this->license->log( 'appsumo_plan_updated', sanitize_key( $request->get_param( 'plan_id' ) ) );
+//
+//        if( is_plugin_active( 'woocommerce-software-license/software-license.php' ) ){
+//            $license_obj = new \WOO_SL_functions;
+//            apply_filters('woo_sl/order_processed/product_sl', array( $this, 'filter_license_data' ), 10, 3);
+//            $this->update_license( $order_id, $request->get_param( 'plan_id' ) );
+//            add_filter( 'woo_sl/generate_license_key', array( $this, 'filter_licence_key' ), 10, 4);
+//            $license_obj->generate_license_keys($order_id);
+//        }
 
-		return $this->license->set_max_allowed( $max_allowed );
+
+
+//		$existing_allowed = $this->license->get_max_allowed( $license_post_id );
+//
+//		if ( $existing_allowed === $max_allowed ) {
+//			return $this->get_error( 'plan_id_same_as_existing', esc_html__( 'plan_id provided is the same as existing.', 'appsumo-licensing' ) );
+//		}
+//		$this->license->set_post_id( $license_post_id );
+//		$this->license->log( 'appsumo_plan_updated', sanitize_key( $request->get_param( 'plan_id' ) ) );
+//
+//		return $this->license->set_max_allowed( $max_allowed );
 
 	}
+
+
+    /**
+     * @param $order_id
+     * @param $product_id
+     * @throws \Exception
+     */
+	private function update_license($order_id, $product_id) {
+        $order                  = new \WC_Order( $order_id );
+        $order_products         = $order->get_items();
+        $found_licensed_product = false;
+        foreach($order_products as $key => $order_product ) {
+            if ( \WOO_SL_functions::is_product_licensed($order_product['product_id']) ) {
+                $found_licensed_product = TRUE;
+                break;
+            }
+        }
+
+        if ( !$found_licensed_product ) {
+            die();
+        }
+
+        foreach( $order_products as $order_item_key => $order_product ) {
+            if ( ! \WOO_SL_functions::is_product_licensed( $order_product['product_id']) ) {
+                continue;
+            }
+
+            $product_sl_groups = array();
+            $variation_license_group_id = 0;
+            if($order_product->get_variation_id()   > 0)
+            {
+                $variation_license_group_id =   get_post_meta( $order_product->get_variation_id(), '_sl_license_group_id', TRUE);
+                if( $variation_license_group_id == '') continue;
+                $product_sl_groups =  \WOO_SL_functions::get_product_licensing_groups( $order_product->get_product_id() );
+                if(isset($product_sl_groups[$variation_license_group_id])) {
+                    $_product_sl_groups                             =   $product_sl_groups;
+                    $product_sl_groups                              =   array();
+                    $product_sl_groups[$variation_license_group_id] =   $_product_sl_groups[$variation_license_group_id];
+                }
+            }
+
+
+            if( $order_product->get_variation_id() != $product_id ) {
+                continue;
+            }
+
+            /** update the existing licenses */
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix.'woocommerce_software_licence',
+                array(
+                    'order_item_id' => $order_item_key,
+                    'group_id'      => 0,
+                ),
+                array(
+                    'order_id' => $order_id
+                )
+            );
+
+            /**
+             * Generate  keys
+             * @var {WOO_SL_functions|WOO_SL_functions}
+             */
+            $_group_title                       =   array();
+            $_licence_prefix                    =   array();
+            $_max_keys                          =   array();
+            $_max_instances_per_key             =   array();
+            $_use_predefined_keys               =   array();
+            $_product_use_expire                =   array();
+            $_product_expire_renew_price        =   array();
+            $_product_expire_units              =   array();
+            $_product_expire_time               =   array();
+            $_product_expire_starts_on_activate =   array();
+            $_product_expire_disable_update_link=   array();
+            $_product_expire_limit_api_usage    =   array();
+            $_product_expire_notice             =   array();
+
+            foreach( $product_sl_groups as  $key => $product_sl_group ) {
+                $_group_title[]                     =   $product_sl_group['group_title'];
+                $_licence_prefix[]                  =   $product_sl_group['licence_prefix'];
+                $_max_keys[]                        =   $product_sl_group['max_keys'];
+                $_max_instances_per_key[]           =   $product_sl_group['max_instances_per_key'];
+                $_use_predefined_keys[]             =   $product_sl_group['use_predefined_keys'];
+                $_product_use_expire[]                =   $product_sl_group['product_use_expire'];
+                $_product_expire_renew_price[]        =   $product_sl_group['product_expire_renew_price'];
+                $_product_expire_units[]              =   $product_sl_group['product_expire_units'];
+                $_product_expire_time[]               =   $product_sl_group['product_expire_time'];
+                $_product_expire_starts_on_activate[] =   $product_sl_group['product_expire_starts_on_activate'];
+                $_product_expire_disable_update_link[]=   $product_sl_group['product_expire_disable_update_link'];
+                $_product_expire_limit_api_usage[]    =   $product_sl_group['product_expire_limit_api_usage'];
+                $_product_expire_notice[]             =   $product_sl_group['product_expire_notice'];
+            }
+            $data['group_title']                            =   $_group_title;
+            $data['licence_prefix']                         =   $_licence_prefix;
+            $data['max_keys']                               =   $_max_keys;
+            $data['max_instances_per_key']                  =   $_max_instances_per_key;
+            $data['use_predefined_keys']                    =   $_use_predefined_keys;
+            $data['product_use_expire']                     =   $_product_use_expire;
+            $data['product_expire_renew_price']             =   $_product_expire_renew_price;
+            $data['product_expire_units']                   =   $_product_expire_units;
+            $data['product_expire_time']                    =   $_product_expire_time;
+            $data['product_expire_starts_on_activate']      =   $_product_expire_starts_on_activate;
+            $data['product_expire_disable_update_link']     =   $_product_expire_disable_update_link;
+            $data['product_expire_limit_api_usage']         =   $_product_expire_limit_api_usage;
+            $data['product_expire_notice']                  =   $_product_expire_notice;
+            $data                                           =   apply_filters('woo_sl/order_processed/product_sl', $data, $order_product, $order_id);
+
+            wc_update_order_item_meta($order_item_key, '_woo_sl', $data);
+            foreach ( $data['product_use_expire']    as  $data_key    =>  $data_block_value ) {
+                if ( $data_block_value    !=  'no' ) {
+                    wc_update_order_item_meta($order_item_key, '_woo_sl_licensing_using_expire', $data_block_value );
+
+                    //continue only if expire_starts_on_activate is not set to yes
+                    $expire_starts_on_activate  =   $data['product_expire_starts_on_activate'][$data_key];
+                    if ( $expire_starts_on_activate ==  'yes' ) {
+                        //set currently as not-activated
+                        wc_update_order_item_meta($order_item_key, '_woo_sl_licensing_status', 'not-activated');
+                        continue;
+                    }
+
+                    if ( $data_block_value    ==  'yes' ) {
+                        $today      =   date("Y-m-d", current_time( 'timestamp' ));
+                        $start_at   =   strtotime($today);
+                        wc_update_order_item_meta($order_item_key, '_woo_sl_licensing_start', $start_at);
+                        $_sl_product_expire_units   =   $data['product_expire_units'][$data_key];
+                        $_sl_product_expire_time    =   $data['product_expire_time'][$data_key];
+                        $expire_at  =   strtotime( " + " . $_sl_product_expire_units . " " . $_sl_product_expire_time,  $start_at);
+                        wc_update_order_item_meta($order_item_key, '_woo_sl_licensing_expire_at', $expire_at);
+                    }
+                }
+            }
+        }
+    }
+
 
 	/**
 	 *
@@ -376,10 +685,10 @@ class AppSumoApi {
 	public function get_max_allowed_for_plan( $plan_id ) {
 
 		switch ( $plan_id ):
-			case( 'uschema_tier1' ):
+			case( 'wpfunnels_tier1' ):
 				$max_allowed = 3;
 				break;
-			case( 'uschema_tier2' ):
+			case( 'wpfunnels_tier2' ):
 				$max_allowed = 1000; // unlimited
 				break;
 			default:
@@ -414,7 +723,7 @@ class AppSumoApi {
 		}
 
 		$data          = new \stdClass();
-		$data->message = esc_html__( 'Product refunded. User Account and License removed', 'ulicense' );
+		$data->message = esc_html__( 'Product refunded. User Account and License removed', 'appsumo-licensing' );
 
 		$response = new \WP_REST_Response();
 		$response->set_status( 200 );
@@ -436,19 +745,19 @@ class AppSumoApi {
 		$license_key = sanitize_key( $request->get_param( 'uuid' ) );
 
 		if ( empty( $license_key ) ) {
-			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'ulicense' ) );
+			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'appsumo-licensing' ) );
 		}
 
 		$license_id = $this->license->get_post_id_from_key( $license_key );
 
 		if ( ! $license_id ) {
-			return $this->get_error( 'license_not_found', esc_html__( 'License could not be found for the key', 'ulicense' ) );
+			return $this->get_error( 'license_not_found', esc_html__( 'License could not be found for the key', 'appsumo-licensing' ) );
 		}
 
 		$update = wp_update_post(
 			[
 				'ID'         => $license_id,
-				'post_title' => esc_html__( 'AppSumo Refunded', 'ulicense' ),
+				'post_title' => esc_html__( 'AppSumo Refunded', 'appsumo-licensing' ),
 				'meta_input' => [
 					'ulicense_licensee_user' => 0,
 					'ulicense_status'        => 'suspended'
@@ -477,14 +786,14 @@ class AppSumoApi {
 		$user_email = $request->get_param( 'activation_email' );
 
 		if ( empty( $user_email ) ) {
-			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'ulicense' ) );
+			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'appsumo-licensing' ) );
 		}
 
 
 		$user = get_user_by_email( $user_email );
 
 		if ( ! $user ) {
-			return $this->get_error( 'user_not_found', esc_html__( 'User could not be found.', 'ulicense' ) );
+			return $this->get_error( 'user_not_found', esc_html__( 'User could not be found.', 'appsumo-licensing' ) );
 		}
 
 		if ( ! function_exists( 'wp_delete_user' ) ) {
@@ -494,7 +803,7 @@ class AppSumoApi {
 		$user_deleted = wp_delete_user( $user->ID );
 
 		if ( ! $user_deleted ) {
-			return $this->get_error( 'user_not_deleted', esc_html__( 'User could not be deleted.', 'ulicense' ) );
+			return $this->get_error( 'user_not_deleted', esc_html__( 'User could not be deleted.', 'appsumo-licensing' ) );
 		}
 
 		return $user_deleted;
@@ -510,11 +819,12 @@ class AppSumoApi {
      */
 	public function api_action_not_found( $request ) {
 
-		$error = $this->get_error( 'api_action_not_found', esc_html__( 'No such API action found.', 'ulicense' ) );
+		$error = $this->get_error( 'api_action_not_found', esc_html__( 'No such API action found.', 'appsumo-licensing' ) );
 
 		return rest_ensure_response( $error );
 
 	}
+
 
 	/**
 	 *
@@ -524,6 +834,7 @@ class AppSumoApi {
 		$this->error = $this->get_error( $code, $message, $status_code );
 
 	}
+
 
 	/**
 	 *
@@ -538,6 +849,31 @@ class AppSumoApi {
 
 	}
 
+
+    /**
+     * @param $data
+     * @param $order_product
+     * @param $order_id
+     */
+	public function filter_license_data( $data, $order_product, $order_id ) {
+        $data['vendor_purchase_code'] = sanitize_key( $this->request->get_param( 'invoice_item_uuid' ) ) ?? '';
+        $data['licensee_company']     = esc_html__( 'AppSumo', 'appsumo-licensing' );
+        $data['notes']                = esc_html__( 'License Generated programmatically for AppSumo purchase', 'appsumo-licensing' );
+    }
+
+    /**
+     * @param $license_key
+     * @param $order_id
+     * @param $order_item_id
+     * @param $license_group_id
+     * @return string
+     */
+	public function filter_licence_key( $license_key, $order_id, $order_item_id, $license_group_id ) {
+        $license_key    = sanitize_key( $this->request->get_param( 'uuid' ) );
+        return $license_key;
+    }
+
+
 	/**
 	 *
 	 */
@@ -550,21 +886,12 @@ class AppSumoApi {
 		$license_meta['max_allowed']          = $max_allowed;
 		$license_meta['license_key']          = sanitize_key( $this->request->get_param( 'uuid' ) ) ?? '';
 		$license_meta['vendor_purchase_code'] = sanitize_key( $this->request->get_param( 'invoice_item_uuid' ) ) ?? '';
-		$license_meta['licensee_company']     = esc_html__( 'AppSumo', 'ulicense' );
-		$license_meta['notes']                = esc_html__( 'License Generated programmatically for AppSumo purchase', 'ulicense' );
-
+		$license_meta['licensee_company']     = esc_html__( 'AppSumo', 'appsumo-licensing' );
+		$license_meta['notes']                = esc_html__( 'License Generated programmatically for AppSumo purchase', 'appsumo-licensing' );
 
 		return $license_meta;
-
 	}
 
-	/**
-	 *
-	 */
-	public function create_new_user( $email ) {
-
-
-	}
 
 	/**
 	 * WP REST api endpoint introduction
@@ -579,6 +906,7 @@ class AppSumoApi {
 			) );
 		} );
 	}
+
 
 	/**
 	 * Helper method to get api_endpoint
@@ -598,6 +926,7 @@ class AppSumoApi {
 
 		return $endpoint;
 	}
+
 
 	/**
 	 * The handler function that receives the API calls and passes them on to the
@@ -629,6 +958,7 @@ class AppSumoApi {
 		return $this->send_response();
 	}
 
+
 	/**
 	 * @param $action
 	 *
@@ -637,6 +967,7 @@ class AppSumoApi {
 	private function is_valid_action( $action ) {
 		return ( in_array( $action, $this->get_allowed_actions() ) );
 	}
+
 
 	/**
 	 *
@@ -660,6 +991,7 @@ class AppSumoApi {
 		);
 	}
 
+
 	/**
 	 * Log error
 	 *
@@ -668,6 +1000,7 @@ class AppSumoApi {
 	public function log_error( $code ) {
 		$this->api_response->log_error( $code );
 	}
+
 
 	/**
 	 * Prints out the JSON response for an API call.
@@ -705,6 +1038,7 @@ class AppSumoApi {
 		return $response;
 	}
 
+
 	/**
 	 * @param $nature
 	 * @param $logs
@@ -722,6 +1056,7 @@ class AppSumoApi {
 		$this->response = array_merge( $response, $this->response );
 	}
 
+
 	private function get_default_response( $type = 'success' ) {
 		$success_response = array(
 			'success' => true,
@@ -735,6 +1070,7 @@ class AppSumoApi {
 
 		return ( 'error' === $type ) ? $error_response : $success_response;
 	}
+
 
 	/**
 	 *
@@ -761,6 +1097,7 @@ class AppSumoApi {
 		);
 
 	}
+
 
 	/**
 	 * Process the dirty request parameters and sanitizes to be used later
@@ -842,6 +1179,7 @@ class AppSumoApi {
 		return true;
 	}
 
+
 	/**
 	 * The handler function that receives the API calls and passes them on to the
 	 * proper handlers.
@@ -889,6 +1227,7 @@ class AppSumoApi {
 		endswitch;
 	}
 
+
 	/**
 	 * This will send license info to response
 	 */
@@ -899,6 +1238,7 @@ class AppSumoApi {
 			$this->response( $license_info, 'license' );
 		}
 	}
+
 
 	/**
 	 * Fetch Licence info from server
@@ -912,6 +1252,7 @@ class AppSumoApi {
 
 		return null;
 	}
+
 
 	/**
 	 * Get license id or log error
@@ -950,6 +1291,7 @@ class AppSumoApi {
 		return $this->license_id;
 	}
 
+
 	/**
 	 * Get License key for vendor specific cases
 	 */
@@ -970,6 +1312,7 @@ class AppSumoApi {
 				return false;
 		endswitch;
 	}
+
 
 	/**
 	 * @param string $license_id
@@ -1007,6 +1350,23 @@ class AppSumoApi {
 		return $license_meta;
 	}
 
+
+    /**
+     * get order id by key
+     *
+     * @return bool|integer
+     */
+	public function get_order_id_from_key( $key ) {
+        global $wpdb;
+        $table  = $wpdb->prefix.'woocommerce_software_licence';
+        $result = $wpdb->get_row( $wpdb->prepare( "SELECT order_id FROM {$table} WHERE licence = %s", $key ) );
+
+        if($result) {
+            return (int)$result->order_id;
+        }
+        return false;
+    }
+
 	/**
 	 *
 	 */
@@ -1014,6 +1374,7 @@ class AppSumoApi {
 
 		return $this->params->type === 'plugin';
 	}
+
 
 	/**
 	 * @param $message
@@ -1023,6 +1384,7 @@ class AppSumoApi {
 		$this->response[ $key ] = $message;
 	}
 
+
 	/**
 	 *
 	 */
@@ -1030,6 +1392,7 @@ class AppSumoApi {
 
 		return $this->params->type === 'software';
 	}
+
 
 	public function send_asset_info() {
 		$asset_info = $this->fetch_asset_info();
@@ -1054,6 +1417,7 @@ class AppSumoApi {
 			}
 		endif;
 	}
+
 
 	/**
 	 * Fetch Licence info from server
@@ -1090,6 +1454,7 @@ class AppSumoApi {
 
 		return null;
 	}
+
 
 	/**
 	 * Get Woocommerce product id from slug
@@ -1140,6 +1505,7 @@ class AppSumoApi {
 		return absint( $product_id );
 	}
 
+
 	public function get_woocommerce_digital_asset_parsed_readme( $product_id ) {
 		$product_id             = absint( $product_id );
 		$digital_asset_metadata = array();
@@ -1183,6 +1549,7 @@ class AppSumoApi {
 
 		return $digital_asset_metadata;
 	}
+
 
 	/**
 	 * verify the license for:
@@ -1243,6 +1610,7 @@ class AppSumoApi {
 		return true;
 	}
 
+
 	/**
 	 * verify the license for license status
 	 *
@@ -1278,6 +1646,7 @@ class AppSumoApi {
 
 		return false;
 	}
+
 
 	/**
 	 * verify the license for license validity against expiry date
@@ -1344,6 +1713,7 @@ class AppSumoApi {
 
 	}
 
+
 	/**
 	 * Verify if computer is allowed in license
 	 *
@@ -1383,6 +1753,7 @@ class AppSumoApi {
 
 
 	}
+
 
 	/**
 	 * Log error
@@ -1772,7 +2143,7 @@ class AppSumoApi {
 
 				return false;
 			}
-			$computer_name = $this->params->name ?? esc_html__( 'Anonymous', 'ulicense' );
+			$computer_name = $this->params->name ?? esc_html__( 'Anonymous', 'appsumo-licensing' );
 			$this->license->activate_computer( $this->params->computer, $computer_name );
 			$this->license->update_status( 'active' );
 			$this->log_success( 'computer_activated' );
@@ -1866,7 +2237,7 @@ class AppSumoApi {
 
 			$meta_input[ $this->prefix . 'vendor_buyer_id' ] = $this->params->vendor_response->buyer;
 
-			$meta_input[ $this->prefix . 'notes' ] = esc_html__( 'License generated programmatically using the vendor purchase code.', 'ulicense' );
+			$meta_input[ $this->prefix . 'notes' ] = esc_html__( 'License generated programmatically using the vendor purchase code.', 'appsumo-licensing' );
 		}
 
 		$postarr['meta_input'] = $meta_input;
@@ -2052,7 +2423,7 @@ class AppSumoApi {
 			return false;
 		}
 
-		$computer_name = $this->params->name ?? esc_html__( 'Anonymous', 'ulicense' );
+		$computer_name = $this->params->name ?? esc_html__( 'Anonymous', 'appsumo-licensing' );
 		$this->license->activate_computer( $this->params->computer, $computer_name );
 		$this->license->update_status( 'active' );
 		$this->log_success( 'computer_activated' );
@@ -2313,6 +2684,4 @@ class AppSumoApi {
 		echo wp_send_json( $var );
 		die();
 	}
-
-
 }

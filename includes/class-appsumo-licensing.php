@@ -156,6 +156,7 @@ class Appsumo_Licensing {
 
 	private function define_endpoints() {
         $this->license_api = new AppSumoApi();
+        add_action( 'rest_api_init', array( $this->license_api, 'register_rest_route_appsumo_notification' ));
     }
 
 
