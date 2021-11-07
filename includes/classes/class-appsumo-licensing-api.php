@@ -464,7 +464,7 @@ class AppSumoApi {
 		// make sure a license is created and
 		$upgrade_plan = $this->update_license_for_plan( $request );
 
-		if ( is_wp_error( $upgrade_plan ) ) {
+		if ( is_wp_error( $upgrade_plan ) || !$upgrade_plan ) {
 			return $upgrade_plan;
 		}
 
@@ -519,30 +519,6 @@ class AppSumoApi {
         $order->save();
         $this->update_license( $order_id, $appsumo_woo_product );
         return true;
-//		$product_id = $this->get_product_id_from_key( $request->get_param( 'uuid' ) );
-
-
-//
-//        if( is_plugin_active( 'woocommerce-software-license/software-license.php' ) ){
-//            $license_obj = new \WOO_SL_functions;
-//            apply_filters('woo_sl/order_processed/product_sl', array( $this, 'filter_license_data' ), 10, 3);
-//            $this->update_license( $order_id, $request->get_param( 'plan_id' ) );
-//            add_filter( 'woo_sl/generate_license_key', array( $this, 'filter_licence_key' ), 10, 4);
-//            $license_obj->generate_license_keys($order_id);
-//        }
-
-
-
-//		$existing_allowed = $this->license->get_max_allowed( $license_post_id );
-//
-//		if ( $existing_allowed === $max_allowed ) {
-//			return $this->get_error( 'plan_id_same_as_existing', esc_html__( 'plan_id provided is the same as existing.', 'appsumo-licensing' ) );
-//		}
-//		$this->license->set_post_id( $license_post_id );
-//		$this->license->log( 'appsumo_plan_updated', sanitize_key( $request->get_param( 'plan_id' ) ) );
-//
-//		return $this->license->set_max_allowed( $max_allowed );
-
 	}
 
 
@@ -686,13 +662,13 @@ class AppSumoApi {
 
 		switch ( $plan_id ):
 			case( 'wpfunnels_tier1' ):
-				$max_allowed = 3;
+				$max_allowed = 5;
 				break;
 			case( 'wpfunnels_tier2' ):
-				$max_allowed = 1000; // unlimited
+				$max_allowed = 15;
 				break;
 			default:
-				$max_allowed = 1;
+				$max_allowed = 1000; // unlimited
 		endswitch;
 
 		return $max_allowed;
@@ -748,30 +724,25 @@ class AppSumoApi {
 			return $this->get_error( 'invalid_request', esc_html__( 'API request is invalid.', 'appsumo-licensing' ) );
 		}
 
-		$license_id = $this->license->get_post_id_from_key( $license_key );
-
-		if ( ! $license_id ) {
+//		$license_id = $this->license->get_post_id_from_key( $license_key );
+        $order_id   = $this->get_order_id_from_key( $license_key );
+		if ( ! $order_id ) {
 			return $this->get_error( 'license_not_found', esc_html__( 'License could not be found for the key', 'appsumo-licensing' ) );
 		}
 
-		$update = wp_update_post(
-			[
-				'ID'         => $license_id,
-				'post_title' => esc_html__( 'AppSumo Refunded', 'appsumo-licensing' ),
-				'meta_input' => [
-					'ulicense_licensee_user' => 0,
-					'ulicense_status'        => 'suspended'
-				]
-			],
-			false,
-			false
-		);
-		$this->license->set_post_id( $license_id );
-
-		$this->license->log( 'appsumo_refunded', sanitize_key( $request->get_param( 'plan_id' ) ) );
-
-		return $update;
-
+		global $wpdb;
+		$order = wc_get_order($order_id);
+		$order->update_status('refunded');
+        $items                  = $order->get_items('line_item');
+        foreach ($items as $item_key => $item) {
+            $wpdb->delete(
+                $wpdb->prefix.'woocommerce_software_licence',
+                array(
+                    'order_id' => $order_id
+                )
+            );
+        }
+        return true;
 	}
 
 

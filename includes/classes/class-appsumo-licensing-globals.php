@@ -27,7 +27,7 @@ class Globals {
      * @return int
      */
     public static function get_appsumo_parent_product_id() {
-        return 1788;
+        return 247;
     }
 
 
@@ -39,9 +39,9 @@ class Globals {
      */
     public static function get_variation_id( $tier_name ) {
         $variations = array(
-            'wpfunnels_tier1' => 1789,
-            'wpfunnels_tier2' => 1790,
-            'wpfunnels_tier3' => 1791,
+            'wpfunnels_tier1' => 248,
+            'wpfunnels_tier2' => 249,
+            'wpfunnels_tier3' => 250,
         );
         return isset($variations[$tier_name]) ? $variations[$tier_name] : 0;
     }
