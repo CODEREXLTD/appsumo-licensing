@@ -68,6 +68,7 @@ class AppSumoApi {
 	 */
 	public function register_rest_route_appsumo_notification() {
 
+	    add_filter('jwt_auth_token_before_dispatch', 'jwt_auth_token_before_dispatch_appsumo_fix');
 		register_rest_route( 'wpf/appsumo/v1/', 'notification', array(
 			'methods'  => 'POST',
 			'callback' => [ $this, 'rest_callback_appsumo_notification' ],
@@ -156,7 +157,12 @@ class AppSumoApi {
 		$order_created = $this->create_order_and_license( $request );
 
 		if ( is_wp_error( $order_created ) ) {
-			return $order_created;
+            $response           = new \WP_REST_Response();
+            $data               = new \stdClass();
+            $data->message      = $order_created;
+            $response->set_status( 200 );
+            $response->set_data( $data );
+            return rest_ensure_response( $order_created );
 		}
 
 		$redirect_url = Globals::get_appsumo_redirect_link();
@@ -213,6 +219,8 @@ class AppSumoApi {
 
 		}
 		$customer_id = wc_create_new_customer( $email );
+		$user        = get_user_by( 'email', $email );
+		update_user_meta( $user->ID, 'is_appsumo_user', 'yes' );
 
 		if ( ! $customer_id ) {
 			return $this->get_error( 'user_not_created', esc_html__( 'user could not be created.', 'appsumo-licensing' ) );
@@ -378,7 +386,7 @@ class AppSumoApi {
             wc_update_order_item_meta($key, '_woo_sl', $data);
 
             //set currently as inactive
-            wc_update_order_item_meta($key, '_woo_sl_licensing_status', 'inactive');
+            wc_update_order_item_meta($key, '_woo_sl_licensing_status', 'active');
 
             foreach ( $data['product_use_expire']    as  $data_key    =>  $data_block_value )
             {
@@ -516,6 +524,7 @@ class AppSumoApi {
         }
 
         $order->add_product( wc_get_product( $appsumo_woo_product ), 1 );
+        $order->calculate_totals();
         $order->save();
         $this->update_license( $order_id, $appsumo_woo_product );
         return true;
@@ -741,6 +750,7 @@ class AppSumoApi {
                     'order_id' => $order_id
                 )
             );
+            wc_update_order_item_meta( $item_key, '_woo_sl_licensing_status', 'inactive' );
         }
         return true;
 	}

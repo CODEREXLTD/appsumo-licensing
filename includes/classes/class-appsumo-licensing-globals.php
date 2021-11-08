@@ -27,7 +27,7 @@ class Globals {
      * @return int
      */
     public static function get_appsumo_parent_product_id() {
-        return 247;
+        return 1788;
     }
 
 
@@ -39,9 +39,9 @@ class Globals {
      */
     public static function get_variation_id( $tier_name ) {
         $variations = array(
-            'wpfunnels_tier1' => 248,
-            'wpfunnels_tier2' => 249,
-            'wpfunnels_tier3' => 250,
+            'wpfunnels_tier1' => 1789,
+            'wpfunnels_tier2' => 1790,
+            'wpfunnels_tier3' => 1791,
         );
         return isset($variations[$tier_name]) ? $variations[$tier_name] : 0;
     }
@@ -66,6 +66,6 @@ class Globals {
      * @return string|void
      */
     public static function get_appsumo_redirect_link() {
-        return home_url();
+        return home_url('/appsumo-login/');
     }
 }
